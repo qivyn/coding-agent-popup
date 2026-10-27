@@ -1,4 +1,4 @@
-# agent-popup
+# coding-agent-popup
 
 **给 macOS 上的 AI 编程 agent 做的醒目弹窗。** 当 Claude Code 或 Codex 需要你授权、问你问题、或者完成一个任务时，屏幕左下角会弹出一张像 Claude 那样的竖版卡片，而不是右上角那个一眨眼就消失的小通知。
 
@@ -25,7 +25,7 @@
 
 agent 的通知是你必须"在做别的事的时候注意到"的那类提示。大多数 agent 用的系统通知又小又短，27 寸屏幕上一不留神就错过了；而且想回应还得切回应用。
 
-agent-popup 默认把一张内容自适应高度的竖版卡片放在屏幕左下角（拖到别处后会记住新位置），并且允许你当场处理：
+coding-agent-popup 默认把一张内容自适应高度的竖版卡片放在屏幕左下角（拖到别处后会记住新位置），并且允许你当场处理：
 
 - **原地回答。** 允许或拒绝一条命令、选一个选项，不用切回终端。
 - **合并任务完成。** 十个会话同时做完，是一个带列表的窗口，而不是十个弹窗。
@@ -64,32 +64,34 @@ agent-popup 默认把一张内容自适应高度的竖版卡片放在屏幕左�
 ## 安装
 
 ```bash
-git clone https://github.com/qivyn/agent-popup.git
-cd agent-popup
+git clone https://github.com/qivyn/coding-agent-popup.git
+cd coding-agent-popup
 ./install.sh              # 自动检测已装的 Claude Code / Codex 并配置
 # 或者明确指定：
 ./install.sh claude
 ./install.sh codex
 ```
 
-安装脚本会把 `agent-popup.js` 复制到 `~/.agent-popup/`，把 hook 合并进你已有的配置（先备份），并打印改了什么。然后：
+安装脚本会把 `coding-agent-popup.js` 复制到 `~/.coding-agent-popup/`，把 hook 合并进你已有的配置（先备份），并打印改了什么。然后：
 
 - **Claude Code**：新开一个会话（或重启应用）即可。
 - **Codex**：hook 需要信任一次。在终端运行 `codex`，输入 `/hooks`，把 `PermissionRequest` 和 `Stop` 两个 hook 标为信任，然后重启 Codex（命令行版和桌面版都重启）。Codex 是按 hook 的具体命令记录信任的，之后只要改了 `~/.codex/hooks.json` 就要重新信任。
 
+从 **agent-popup**（本项目的旧名字）升级：直接运行 `./install.sh` 即可。它会把旧 hook 换成新的、删掉 `~/.agent-popup`，并保留你拖好的弹窗位置。hook 命令变了，所以 Codex 会要求重新信任一次。
+
 ### 先看看效果
 
 ```bash
-osascript -l JavaScript ~/.agent-popup/agent-popup.js demo
+osascript -l JavaScript ~/.coding-agent-popup/coding-agent-popup.js demo
 ```
 
 用示例内容依次展示三种弹窗，语言跟随系统。只想看某一种：`demo ask`、`demo perm`、`demo done`；`demo codex` 看 Codex 风格的权限弹窗。
 
 ## 工作原理
 
-Claude Code 和 Codex 都会在"准备问你什么"时触发 `PermissionRequest` hook，在一轮结束时触发 `Stop` hook。agent-popup 各注册一条命令 hook：
+Claude Code 和 Codex 都会在"准备问你什么"时触发 `PermissionRequest` hook，在一轮结束时触发 `Stop` hook。coding-agent-popup 各注册一条命令 hook：
 
-- `PermissionRequest` → 从 stdin 读事件 JSON → 弹窗 → 输出决定（`allow` / `deny`，或者 `allow` 并带上 `updatedInput` 把你的答案传回去，这也是选项提问的实现方式）。Claude Code 在"可能要问你"的那一刻就触发这个 hook，这时它的自动模式分类器还可能自己把调用批准掉。所以对 Claude Code，弹窗会先静默等待，直到 Claude Code 发出自己的 `permission_prompt` 通知（请求大约 6 秒没人处理时才发），由第三个 hook `Notification` 转告过来。在这之前被批准的——分类器、规则，或者你在应用里点了——一律不弹。Codex 可以把审批交给它的自动审核（会话设置里 `approvals_reviewer: auto_review`），这时它根本不会问你，agent-popup 也就不弹；只有 Codex 真的来问你时，才会立刻弹出——而且 Codex 会等这个弹窗：它先运行 hook，再显示自己的审批提示，所以只有弹窗没给出答案就关掉（点"去应用里处理"、按 `esc` 或超时）之后，Codex 应用里才会出现审批提示。弹窗打开期间也会继续盯着：一旦命令开始运行（出现在进程列表里）或者这次调用在会话记录里有了结果，就自动关掉，交给 agent 自己处理。
+- `PermissionRequest` → 从 stdin 读事件 JSON → 弹窗 → 输出决定（`allow` / `deny`，或者 `allow` 并带上 `updatedInput` 把你的答案传回去，这也是选项提问的实现方式）。Claude Code 在"可能要问你"的那一刻就触发这个 hook，这时它的自动模式分类器还可能自己把调用批准掉。所以对 Claude Code，弹窗会先静默等待，直到 Claude Code 发出自己的 `permission_prompt` 通知（请求大约 6 秒没人处理时才发），由第三个 hook `Notification` 转告过来。在这之前被批准的——分类器、规则，或者你在应用里点了——一律不弹。Codex 可以把审批交给它的自动审核（会话设置里 `approvals_reviewer: auto_review`），这时它根本不会问你，coding-agent-popup 也就不弹；只有 Codex 真的来问你时，才会立刻弹出——而且 Codex 会等这个弹窗：它先运行 hook，再显示自己的审批提示，所以只有弹窗没给出答案就关掉（点"去应用里处理"、按 `esc` 或超时）之后，Codex 应用里才会出现审批提示。弹窗打开期间也会继续盯着：一旦命令开始运行（出现在进程列表里）或者这次调用在会话记录里有了结果，就自动关掉，交给 agent 自己处理。
 - `Stop` → 把通知写进队列 → 抢"窗口主人"锁。抢到的负责开窗口；没抢到的只是入队然后立刻退出，所以不会阻塞 agent。窗口主人每个 tick 检查队列里的新消息、刷新心跳；窗口关闭后先复查队列再释放锁，这样刚好在这一刻到达的消息也不会丢。窗口进程崩了，锁的心跳会过期，下一次会话直接接管。
 
 界面是塞在无边框 `NSWindow` + `WKWebView` 里的自包含 HTML。万一 web 视图没加载出来，会自动退回系统原生对话框，不会让你丢失提示。
@@ -105,14 +107,14 @@ Claude Code 和 Codex 都会在"准备问你什么"时触发 `PermissionRequest`
 接一个新的 agent 通常只需要一个名字。在它的 hook 配置里调用：
 
 ```bash
-osascript -l JavaScript "$HOME/.agent-popup/agent-popup.js" <agent-name>
+osascript -l JavaScript "$HOME/.coding-agent-popup/coding-agent-popup.js" <agent-name>
 ```
 
 不认识的名字也能用——会用通用的终端图标，合并弹窗里显示它自己的名字。
 
 ## 配置
 
-改 `~/.agent-popup/agent-popup.js` 顶部的常量：
+改 `~/.coding-agent-popup/coding-agent-popup.js` 顶部的常量：
 
 | 常量 | 默认值 | 含义 |
 |---|---|---|
@@ -141,13 +143,13 @@ osascript -l JavaScript "$HOME/.agent-popup/agent-popup.js" <agent-name>
 说明自定义窗口没加载出来，走到了备用方案，功能仍然可用。想排查的话在“控制台”App 里找 `osascript` 的报错。
 
 **agent 本来不用问的事也弹了窗。**
-在 agent 的环境变量里设 `AGENT_POPUP_DEBUG=1`（Claude Code 写在 `~/.claude/settings.json` 的 `env` 里）。之后每个权限请求的工具名、权限模式和处理结果都会记到临时目录（`getconf DARWIN_USER_TEMP_DIR`）下的 `agent-popup/debug.log`，不记录工具参数。
+在 agent 的环境变量里设 `AGENT_POPUP_DEBUG=1`（Claude Code 写在 `~/.claude/settings.json` 的 `env` 里）。之后每个权限请求的工具名、权限模式和处理结果都会记到临时目录（`getconf DARWIN_USER_TEMP_DIR`）下的 `coding-agent-popup/debug.log`，不记录工具参数。
 
 **第一次弹窗时 macOS 问是否允许。**
 允许即可，创建窗口的脚本需要一次授权。
 
 **有些命令没问就直接执行了。**
-那是 agent 自己的授权设置允许的。agent-popup 只能看到 agent 本来就要询问的请求，没办法让一个宽松的 agent 变严格。
+那是 agent 自己的授权设置允许的。coding-agent-popup 只能看到 agent 本来就要询问的请求，没办法让一个宽松的 agent 变严格。
 
 **我的问题没有以卡片形式弹出。**
 只有 Claude Code 有 `AskUserQuestion`；Codex 没有对应机制，它的提问仍然在应用里回答。
@@ -158,7 +160,7 @@ osascript -l JavaScript "$HOME/.agent-popup/agent-popup.js" <agent-name>
 ./uninstall.sh
 ```
 
-从 `~/.claude/settings.json` 和 `~/.codex/hooks.json` 里移除本项目的 hook（保留你的其他设置和 hook，并留备份），然后删除 `~/.agent-popup`。
+从 `~/.claude/settings.json` 和 `~/.codex/hooks.json` 里移除本项目的 hook（保留你的其他设置和 hook，并留备份），然后删除 `~/.coding-agent-popup`。
 
 ## 隐私
 
@@ -168,7 +170,7 @@ osascript -l JavaScript "$HOME/.agent-popup/agent-popup.js" <agent-name>
 
 ```bash
 npm install     # jsdom，用于界面测试
-npm test        # 60 个测试：弹窗界面、队列/锁逻辑、"已在别处处理"检测、安装脚本、hook 入口
+npm test        # 62 个测试：弹窗界面、队列/锁逻辑、"已在别处处理"检测、安装脚本、hook 入口
 npm run preview # 用当前 CSS 重新生成 docs/preview.html
 ```
 
@@ -180,5 +182,5 @@ MIT。本项目与 Anthropic、OpenAI 无关；"Claude" 和 "Codex" 仅用于说
 
 ## 关键词
 
-Claude Code 通知、Claude Code 弹窗、Claude Code hooks、Codex 通知、Codex hooks、AI 编程助手通知、
+AI 编程 agent 弹窗、coding agent 通知、Claude Code 通知、Claude Code 弹窗、Claude Code hooks、Codex 通知、Codex hooks、AI 编程助手通知、
 macOS 弹窗提醒、命令授权提醒、任务完成提醒、大屏幕通知、osascript JXA WKWebView 弹窗。

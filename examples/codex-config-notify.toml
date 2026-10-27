@@ -5,4 +5,4 @@
 # Permission requests cannot be shown this way — only "task complete".
 #
 # Add the "codex" name so the popup is labelled Codex:
-notify = ["sh", "-c", "(osascript -l JavaScript \"$HOME/.agent-popup/agent-popup.js\" codex \"$1\" >/dev/null 2>&1 &)", "sh"]
+notify = ["sh", "-c", "(osascript -l JavaScript \"$HOME/.coding-agent-popup/coding-agent-popup.js\" codex \"$1\" >/dev/null 2>&1 &)", "sh"]

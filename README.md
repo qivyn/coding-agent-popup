@@ -1,4 +1,4 @@
-# agent-popup
+# coding-agent-popup
 
 **Hard-to-miss, Claude-styled popups for AI coding agents on macOS.** When Claude Code or Codex needs permission, asks you a question, or finishes a task, you get a proper card in the bottom-left corner of the screen instead of a tiny notification that disappears before you look at it.
 
@@ -27,7 +27,7 @@ Agent notifications are the one thing you have to notice while doing something e
 notifications that most agents show are small, brief, and easy to miss on a large display — and
 you can't answer them without switching back to the app.
 
-agent-popup puts a tall, readable card in the bottom-left corner of the screen (drag it elsewhere
+coding-agent-popup puts a tall, readable card in the bottom-left corner of the screen (drag it elsewhere
 and it remembers), sized to its content, and lets you act on it right there:
 
 - **Answer in place.** Allow or deny a command, or pick an option, without going back to the terminal.
@@ -67,26 +67,30 @@ and it remembers), sized to its content, and lets you act on it right there:
 ## Install
 
 ```bash
-git clone https://github.com/qivyn/agent-popup.git
-cd agent-popup
+git clone https://github.com/qivyn/coding-agent-popup.git
+cd coding-agent-popup
 ./install.sh              # detects Claude Code and/or Codex and wires up both
 # or be explicit:
 ./install.sh claude
 ./install.sh codex
 ```
 
-The installer copies `agent-popup.js` to `~/.agent-popup/`, merges the hooks into your existing
-config (backing it up first), and prints what it changed. Then:
+The installer copies `coding-agent-popup.js` to `~/.coding-agent-popup/`, merges the hooks into your
+existing config (backing it up first), and prints what it changed. Then:
 
 - **Claude Code:** start a new session (or restart the app).
 - **Codex:** hooks must be trusted once. Run `codex` in a terminal, type `/hooks`, trust the
   `PermissionRequest` and `Stop` hooks, then restart Codex — CLI *and* desktop app. Codex keys trust
   to the exact command, so re-trust after editing `~/.codex/hooks.json`.
 
+Upgrading from **agent-popup** (this project's old name)? Just run `./install.sh`: it swaps the old
+hooks for the new ones and removes `~/.agent-popup`, keeping where you left the popup. The hook
+commands change, so Codex asks you to trust them again.
+
 ### See it first
 
 ```bash
-osascript -l JavaScript ~/.agent-popup/agent-popup.js demo
+osascript -l JavaScript ~/.coding-agent-popup/coding-agent-popup.js demo
 ```
 
 Shows the three popups with sample content, in your language. `demo ask`, `demo perm`, `demo done`
@@ -95,7 +99,7 @@ for one at a time, and `demo codex` for the permission popup in Codex's look.
 ## How it works
 
 Claude Code and Codex both fire a hook named `PermissionRequest` when they're about to ask you
-something, and `Stop` when a turn ends. agent-popup registers a command hook for each:
+something, and `Stop` when a turn ends. coding-agent-popup registers a command hook for each:
 
 - `PermissionRequest` → read the event JSON from stdin → show a popup → print a decision
   (`allow` / `deny`, or `allow` with `updatedInput` carrying your answers, which is how the
@@ -106,7 +110,7 @@ something, and `Stop` when a turn ends. agent-popup registers a command hook for
   answered); a third hook, `Notification`, passes that on. Anything approved before then — by the
   classifier, a rule, or you in the app — never shows a popup. Codex can hand approvals to its
   auto-reviewer (`approvals_reviewer: auto_review` in the session); it then never asks you, so
-  agent-popup stays out of the way. When Codex does ask you, the popup shows right away — and Codex
+  coding-agent-popup stays out of the way. When Codex does ask you, the popup shows right away — and Codex
   waits for it: Codex runs the hook *before* its own approval prompt, so the prompt only appears in
   the Codex app once the popup closes without an answer ("Answer in app", `esc`, or the timeout).
   While a popup is open it keeps watching: once the command is running (it appears in the process
@@ -132,14 +136,14 @@ fails to load, the script falls back to a native `displayDialog`, so you never l
 Adding another agent is usually just a name. In its hook config, call:
 
 ```bash
-osascript -l JavaScript "$HOME/.agent-popup/agent-popup.js" <agent-name>
+osascript -l JavaScript "$HOME/.coding-agent-popup/coding-agent-popup.js" <agent-name>
 ```
 
 Unknown names work — they get a generic terminal icon and their own label in merged popups.
 
 ## Configuration
 
-Edit the constants at the top of `~/.agent-popup/agent-popup.js`:
+Edit the constants at the top of `~/.coding-agent-popup/coding-agent-popup.js`:
 
 | Constant | Default | Meaning |
 |---|---|---|
@@ -181,14 +185,14 @@ and look for `osascript` errors if you want to debug it.
 **A popup appears for something the agent didn't need to ask about.**
 Set `AGENT_POPUP_DEBUG=1` in the agent's environment (for Claude Code, the `env` block of
 `~/.claude/settings.json`). Each permission request is then logged with its tool, permission mode
-and outcome to `agent-popup/debug.log` in your temp directory (`getconf DARWIN_USER_TEMP_DIR`).
+and outcome to `coding-agent-popup/debug.log` in your temp directory (`getconf DARWIN_USER_TEMP_DIR`).
 Tool input isn't logged.
 
 **macOS asks for permission the first time.**
 Allow it. Scripts that create windows need accessibility/automation permission once.
 
 **A command runs without asking.**
-Your agent's approval settings allow it. agent-popup only sees requests the agent would have asked
+Your agent's approval settings allow it. coding-agent-popup only sees requests the agent would have asked
 about; it can't make a permissive agent stricter.
 
 **My questions don't show up as cards.**
@@ -201,7 +205,7 @@ Only Claude Code has `AskUserQuestion`; Codex has no equivalent, so its question
 ```
 
 Removes the hooks from `~/.claude/settings.json` and `~/.codex/hooks.json` (leaving your other
-settings and hooks alone, with a backup), and deletes `~/.agent-popup`.
+settings and hooks alone, with a backup), and deletes `~/.coding-agent-popup`.
 
 ## Privacy
 
@@ -213,7 +217,7 @@ directory while a popup is open. No network access, no telemetry, no third-party
 
 ```bash
 npm install     # jsdom, for the UI tests
-npm test        # 60 tests: popup UI, queue/lock logic, settled-elsewhere detection, installer, hook entry point
+npm test        # 62 tests: popup UI, queue/lock logic, settled-elsewhere detection, installer, hook entry point
 npm run preview # rebuild docs/preview.html from the current CSS
 ```
 
@@ -227,6 +231,7 @@ which tools this integrates with.
 
 ## Keywords
 
-claude code notification, claude code popup, claude code hooks, codex notification, openai codex
-hooks, AI agent notification macos, agent permission prompt, terminal notification alternative,
-large screen notification, osascript jxa wkwebview popup.
+coding agent popup, coding agent notification, claude code notification, claude code popup,
+claude code hooks, codex notification, openai codex hooks, AI agent notification macos, agent
+permission prompt, terminal notification alternative, large screen notification, osascript jxa
+wkwebview popup.

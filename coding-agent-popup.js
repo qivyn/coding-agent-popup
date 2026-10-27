@@ -1,14 +1,14 @@
-// agent-popup — hard-to-miss, Claude-styled popups for AI coding agents on macOS.
-// https://github.com/qivyn/agent-popup   (MIT License)
+// coding-agent-popup — hard-to-miss, Claude-styled popups for AI coding agents on macOS.
+// https://github.com/qivyn/coding-agent-popup   (MIT License)
 //
 // Supports Claude Code (CLI & desktop) and OpenAI Codex (CLI & desktop) through their
 // hook systems, plus any agent that speaks the same hook JSON.
 //
 // Usage (run with macOS's built-in JavaScript for Automation, no dependencies):
-//   osascript -l JavaScript agent-popup.js install [claude] [codex]   install + wire up hooks
-//   osascript -l JavaScript agent-popup.js uninstall                  remove hooks + files
-//   osascript -l JavaScript agent-popup.js demo [ask|perm|done|codex] preview the popups
-//   osascript -l JavaScript agent-popup.js <agent>                    hook mode (JSON on stdin)
+//   osascript -l JavaScript coding-agent-popup.js install [claude] [codex]   install + wire up hooks
+//   osascript -l JavaScript coding-agent-popup.js uninstall                  remove hooks + files
+//   osascript -l JavaScript coding-agent-popup.js demo [ask|perm|done|codex] preview the popups
+//   osascript -l JavaScript coding-agent-popup.js <agent>                    hook mode (JSON on stdin)
 //
 // Hook mode handles:
 //   PermissionRequest / AskUserQuestion -> choice popup (allow / deny, or pick options)
@@ -43,7 +43,7 @@ var STRINGS = {
     keySelect: 'select', keyToggle: 'toggle', next: 'Next', submit: 'Submit', back: 'Back',
     handOff: 'Answer in app', handOffShort: 'answer in app',
     permTitle: '{agent} wants to {verb}', allow: 'Allow', deny: 'Deny',
-    denyMessage: 'The user denied this in agent-popup.',
+    denyMessage: 'The user denied this in coding-agent-popup.',
     done: 'Task complete', doneN: '{n} tasks complete', gotIt: 'Got it', dismissAll: 'Dismiss all',
     open: 'Open {agent}', dismissOne: 'Dismiss', fallbackMsg: '{agent} finished the task.',
     otherNative: 'Other… (answer in app)', ok: 'OK',
@@ -800,7 +800,7 @@ function homeDir() { return ObjC.unwrap($.NSHomeDirectory()); }
 function baseDir() {
   var d = ObjC.unwrap($.NSTemporaryDirectory()) || '/tmp/';
   if (d.slice(-1) !== '/') d += '/';
-  d += 'agent-popup/';
+  d += 'coding-agent-popup/';
   ensureDir(d);
   return d;
 }
@@ -1214,7 +1214,7 @@ function nativeDone(items) {
   var okLabel = items.length > 1 ? T.dismissAll : T.gotIt;
   try {
     var d = app.displayDialog((items.length > 1 ? fmt(T.doneN, { n: items.length }) : T.done) + '\n\n' + clip(text, 1200), {
-      withTitle: 'agent-popup', buttons: [openLabel, okLabel], defaultButton: okLabel,
+      withTitle: 'coding-agent-popup', buttons: [openLabel, okLabel], defaultButton: okLabel,
       givingUpAfter: DONE_TIMEOUT_SEC });
     return { action: d.buttonReturned === openLabel ? 'open' : 'ok' };
   } catch (e) { return { action: 'ok' }; }
@@ -1922,7 +1922,7 @@ function decision(d) {
 }
 
 // Set AGENT_POPUP_DEBUG=1 in the agent's environment to log each permission request and what
-// happened to it (agent-popup/debug.log in the per-user temp directory). Tool input is not logged.
+// happened to it (coding-agent-popup/debug.log in the per-user temp directory). Tool input is not logged.
 function debugLog(data, outcome) {
   if (!envVar('AGENT_POPUP_DEBUG')) return;
   try {
@@ -2043,9 +2043,13 @@ function handleHook(data, agent) {
 // install / uninstall
 // =============================================================================
 
-var INSTALL_DIR_REL = '.agent-popup';
-var SCRIPT_NAME = 'agent-popup.js';
-var OUR_SCRIPT_RE = /agent-popup\.js|claude-popup\.js/;   // claude-popup.js = pre-release name
+var INSTALL_DIR_REL = '.coding-agent-popup';
+var SCRIPT_NAME = 'coding-agent-popup.js';
+// Our hooks under every name the project has had: coding-agent-popup.js, agent-popup.js (the
+// first builds) and claude-popup.js (pre-release). Installing replaces all of them, so nothing runs twice.
+var OUR_SCRIPT_RE = /agent-popup\.js|claude-popup\.js/;
+var OLD_INSTALL_DIR_REL = '.agent-popup';
+var OLD_TEMP_NAME = 'agent-popup/';
 
 function hookCommand(agent, event) {
   var base = 'osascript -l JavaScript "$HOME/' + INSTALL_DIR_REL + '/' + SCRIPT_NAME + '" ' + agent;
@@ -2134,12 +2138,13 @@ function install(args) {
   var dest = home + '/' + INSTALL_DIR_REL + '/' + SCRIPT_NAME;
   var src = selfPath();
   ensureDir(home + '/' + INSTALL_DIR_REL);
-  if (!src && !fileExists(dest)) return '✗ could not find agent-popup.js to install';
+  if (!src && !fileExists(dest)) return '✗ could not find coding-agent-popup.js to install';
   if (src && src !== dest) {
     removePath(dest);
     if (!fm().copyItemAtPathToPathError($(src), $(dest), null)) return '✗ could not copy ' + src + ' to ' + dest;
   }
   log.push('✓ installed ' + dest);
+  migrateOldInstall(log);
 
   var agents = args.filter(function (a) { return a === 'claude' || a === 'codex'; });
   if (!agents.length) {
@@ -2159,11 +2164,28 @@ function install(args) {
   return log.join('\n');
 }
 
+// Earlier builds were called agent-popup and lived in ~/.agent-popup. Their hooks are
+// replaced by updateConfig (OUR_SCRIPT_RE knows the old name); keep where you left the popup,
+// then remove the old copy. The old temp directory is left alone: a popup from the old version
+// may still be open and using it.
+function migrateOldInstall(log) {
+  var home = homeDir(), old = home + '/' + OLD_INSTALL_DIR_REL;
+  if (!fileExists(old)) return;
+  var spots = old + '/window.json';
+  if (fileExists(spots) && !fileExists(windowSpotsPath())) writeText(windowSpotsPath(), readText(spots));
+  removePath(old);
+  log.push('✓ replaced the old install in ~/' + OLD_INSTALL_DIR_REL);
+}
+
+function oldTempDir() { return baseDir().replace(/[^\/]+\/$/, '') + OLD_TEMP_NAME; }
+
 function uninstall() {
   var log = [];
   updateConfig('claude', true, log);
   updateConfig('codex', true, log);
   removePath(homeDir() + '/' + INSTALL_DIR_REL);
+  removePath(homeDir() + '/' + OLD_INSTALL_DIR_REL);
+  removePath(oldTempDir());
   removePath(baseDir());
   log.push('✓ removed ~/' + INSTALL_DIR_REL);
   return log.join('\n');
@@ -2220,7 +2242,7 @@ function demo(kind) {
                   : 'Added retries with exponential backoff (max 5). Also fixed a timezone bug in the nightly job.' });
     enqueueDone(qdir, { project: 'blog', time: now - 20000, agent: { name: 'Claude', icon: 'spark' },
       appName: claude.app, host: claude.host,
-      message: zh ? '文章草稿写好了，保存在 posts/agent-popup.md。' : 'Draft is ready in posts/agent-popup.md.' });
+      message: zh ? '文章草稿写好了，保存在 posts/coding-agent-popup.md。' : 'Draft is ready in posts/coding-agent-popup.md.' });
     // The same project again: its two messages share one card, marked "2 updates".
     enqueueDone(qdir, { project: 'blog', time: now - 40000, agent: { name: 'Claude', icon: 'spark' },
       appName: claude.app, host: claude.host,
@@ -2238,14 +2260,14 @@ function demo(kind) {
 // =============================================================================
 
 var HELP = [
-  'agent-popup ' + VERSION + ' — hard-to-miss popups for AI coding agents on macOS',
+  'coding-agent-popup ' + VERSION + ' — hard-to-miss popups for AI coding agents on macOS',
   '',
-  '  osascript -l JavaScript agent-popup.js install [claude] [codex]',
-  '  osascript -l JavaScript agent-popup.js uninstall',
-  '  osascript -l JavaScript agent-popup.js demo [ask|perm|done|codex]',
-  '  osascript -l JavaScript agent-popup.js <agent>        hook mode, event JSON on stdin',
+  '  osascript -l JavaScript coding-agent-popup.js install [claude] [codex]',
+  '  osascript -l JavaScript coding-agent-popup.js uninstall',
+  '  osascript -l JavaScript coding-agent-popup.js demo [ask|perm|done|codex]',
+  '  osascript -l JavaScript coding-agent-popup.js <agent>        hook mode, event JSON on stdin',
   '',
-  'https://github.com/qivyn/agent-popup'
+  'https://github.com/qivyn/coding-agent-popup'
 ].join('\n');
 
 function run(argv) {

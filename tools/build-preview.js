@@ -1,9 +1,9 @@
 // Regenerates docs/preview.html — a static page showing the three popups side by side.
-// Run with `npm run preview`. Only needed when editing the CSS in agent-popup.js.
+// Run with `npm run preview`. Only needed when editing the CSS in coding-agent-popup.js.
 const fs = require('fs');
 const path = require('path');
 
-const src = fs.readFileSync(path.join(__dirname, '..', 'agent-popup.js'), 'utf8');
+const src = fs.readFileSync(path.join(__dirname, '..', 'coding-agent-popup.js'), 'utf8');
 const M = new Function('require', src + '\n;return {buildHTML, STRINGS};')(require);
 
 const T = M.STRINGS.en;
@@ -30,7 +30,7 @@ const PAGES = {
     mode: 'done', agent: { name: 'Claude', icon: 'spark' },
     items: [
       { id: '1', project: 'blog', time: now - 60000, agent: { name: 'Claude', icon: 'spark' },
-        message: 'Draft is ready in posts/agent-popup.md.' },
+        message: 'Draft is ready in posts/coding-agent-popup.md.' },
       { id: '2', project: 'data-pipeline', time: now - 240000, agent: { name: 'Codex', icon: 'term' },
         message: 'Added retries with exponential backoff (max 5). Also fixed a timezone bug where jobs after midnight were counted on the previous day.' },
       { id: '3', project: 'my-webapp', time: now - 600000, agent: { name: 'Claude', icon: 'spark' },
@@ -83,7 +83,7 @@ const inner = Object.keys(PAGES).map(function (label) {
 
 const out = '<!doctype html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n' +
   '<meta name="viewport" content="width=device-width, initial-scale=1">\n' +
-  '<title>agent-popup — what the popups look like</title>\n<style>\n' +
+  '<title>coding-agent-popup — what the popups look like</title>\n<style>\n' +
   ':root{--muted:#73726C}\n' +
   'body{margin:0;background:#E9E7E0;color:#141413;padding:32px 20px;\n' +
   '  font:14px/1.5 -apple-system,BlinkMacSystemFont,"PingFang SC","Helvetica Neue",sans-serif}\n' +
@@ -95,10 +95,10 @@ const out = '<!doctype html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n
   'figcaption{font-size:12px;color:var(--muted);margin-bottom:8px}\n' +
   'iframe{width:400px;max-width:100%;border:0;border-radius:12px;background:#FAF9F5;\n' +
   '  box-shadow:0 10px 30px rgba(0,0,0,.12),0 0 0 1px rgba(0,0,0,.06)}\n' +
-  '</style>\n</head>\n<body>\n<h1>agent-popup</h1>\n' +
-  '<p class="lead">The popups, rendered from the real <code>agent-popup.js</code>: Claude style, and ' +
+  '</style>\n</head>\n<body>\n<h1>coding-agent-popup</h1>\n' +
+  '<p class="lead">The popups, rendered from the real <code>coding-agent-popup.js</code>: Claude style, and ' +
   'Codex style for popups that only involve Codex. ' +
-  'This page is a design preview — running <code>agent-popup.js demo</code> on a Mac shows the ' +
+  'This page is a design preview — running <code>coding-agent-popup.js demo</code> on a Mac shows the ' +
   'actual floating windows.</p>\n<div class="grid">\n' + inner + '\n</div>\n</body>\n</html>\n';
 
 fs.writeFileSync(path.join(__dirname, '..', 'docs', 'preview.html'), out);

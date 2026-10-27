@@ -1,4 +1,4 @@
-// Tests for agent-popup.js — run on any machine with Node, no macOS needed.
+// Tests for coding-agent-popup.js — run on any machine with Node, no macOS needed.
 // Native pieces (NSWindow, WKWebView, osascript) are stubbed; the popup UI runs in jsdom
 // and the queue/lock logic runs against a temp directory.
 //
@@ -9,7 +9,7 @@ const os = require('os');
 const path = require('path');
 const { execSync } = require('child_process');
 
-const SRC = fs.readFileSync(path.join(__dirname, '..', 'agent-popup.js'), 'utf8');
+const SRC = fs.readFileSync(path.join(__dirname, '..', 'coding-agent-popup.js'), 'utf8');
 const EXPORTS = '{buildHTML, STRINGS, mergeHooks, hookCommand, plainText}';
 
 let passed = 0, failed = 0;
@@ -260,7 +260,7 @@ if (!JSDOM) {
 // ---------------------------------------------------------------------------
 console.log('Queue & lock');
 
-const TMP = path.join(os.tmpdir(), 'agent-popup-test-' + process.pid);
+const TMP = path.join(os.tmpdir(), 'coding-agent-popup-test-' + process.pid);
 const QDIR = TMP + '/done-queue/';
 const LOCK = TMP + '/done-owner';
 const CLAUDE = { name: 'Claude', icon: 'spark', app: ['Claude'], host: '' };
@@ -669,8 +669,8 @@ test('a running copy of the command means the agent approved it', () => {
   const H = hookModule();
   const table = [
     '  100     1 /Applications/Claude.app/Contents/MacOS/claude --output-format stream-json',
-    '  200   100 /bin/sh -c osascript -l JavaScript "$HOME/.agent-popup/agent-popup.js" claude',
-    '  201   200 osascript -l JavaScript /Users/me/.agent-popup/agent-popup.js claude',
+    '  200   100 /bin/sh -c osascript -l JavaScript "$HOME/.coding-agent-popup/coding-agent-popup.js" claude',
+    '  201   200 osascript -l JavaScript /Users/me/.coding-agent-popup/coding-agent-popup.js claude',
     '  202   201 /bin/zsh -lc /bin/ps -axww -o pid=,ppid=,command=',
     "  300   100 /bin/zsh -c source /x/snapshot.sh && eval 'npm test -- --grep '\"'\"'login'\"'\"'' < /dev/null && pwd -P",
     '  400   100 /bin/zsh -lc cargo build --release',
@@ -686,7 +686,7 @@ test('a running copy of the command means the agent approved it', () => {
 console.log('Session links');
 
 test('links open the exact Codex thread or Claude desktop session', () => {
-  const home = path.join(os.tmpdir(), 'agent-popup-links-' + process.pid);
+  const home = path.join(os.tmpdir(), 'coding-agent-popup-links-' + process.pid);
   const dir = home + '/Library/Application Support/Claude-3p/claude-code-sessions/acct/org';
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(dir + '/local_abc-123.json', JSON.stringify({ sessionId: 'local_abc-123', cliSessionId: 'cli-9' }));
@@ -713,10 +713,10 @@ const M = load();
 test('install into an empty Claude config', () => {
   const cfg = M.mergeHooks({}, 'claude', false);
   eq(Object.keys(cfg.hooks).sort(), ['Notification', 'PermissionRequest', 'Stop']);
-  ok(/agent-popup\.js" claude$/.test(cfg.hooks.PermissionRequest[0].hooks[0].command), 'command points at our script');
+  ok(/coding-agent-popup\.js" claude$/.test(cfg.hooks.PermissionRequest[0].hooks[0].command), 'command points at our script');
   eq(cfg.hooks.PermissionRequest[0].matcher, '');
   eq(cfg.hooks.Notification[0].matcher, 'permission_prompt');
-  ok(/agent-popup\.js" claude$/.test(cfg.hooks.Notification[0].hooks[0].command), 'notification hook runs in the foreground');
+  ok(/coding-agent-popup\.js" claude$/.test(cfg.hooks.Notification[0].hooks[0].command), 'notification hook runs in the foreground');
   eq(M.mergeHooks({}, 'codex', false).hooks.Notification, undefined, 'Codex has no Notification event');
 });
 
@@ -740,7 +740,7 @@ test('install replaces pre-release claude-popup.js hooks', () => {
   const old = { hooks: { PermissionRequest: [{ matcher: '', hooks: [{ type: 'command', command: 'osascript -l JavaScript ~/.claude/hooks/claude-popup.js', timeout: 300 }] }] } };
   const cfg = M.mergeHooks(old, 'claude', false);
   eq(cfg.hooks.PermissionRequest.length, 1);
-  ok(cfg.hooks.PermissionRequest[0].hooks[0].command.includes('.agent-popup/agent-popup.js'));
+  ok(cfg.hooks.PermissionRequest[0].hooks[0].command.includes('.coding-agent-popup/coding-agent-popup.js'));
 });
 
 test('Codex hooks: no matcher, Stop prints {} with a short timeout', () => {
@@ -758,10 +758,10 @@ test('uninstall removes only our hooks and drops emptied sections', () => {
 });
 
 test('the Stop hook command really forwards stdin to the background process', () => {
-  const sink = path.join(os.tmpdir(), 'agent-popup-test-stdin.txt');
+  const sink = path.join(os.tmpdir(), 'coding-agent-popup-test-stdin.txt');
   fs.rmSync(sink, { force: true });
   const cmd = M.hookCommand('codex', 'Stop')
-    .replace('osascript -l JavaScript "$HOME/.agent-popup/agent-popup.js" codex', 'cat > ' + JSON.stringify(sink));
+    .replace('osascript -l JavaScript "$HOME/.coding-agent-popup/coding-agent-popup.js" codex', 'cat > ' + JSON.stringify(sink));
   const out = execSync(cmd, { shell: '/bin/sh', input: '{"hook_event_name":"Stop"}' }).toString();
   eq(out.trim(), '{}', 'Codex gets valid JSON back');
   execSync('sleep 0.3');
@@ -803,8 +803,8 @@ test('completion text drops blank lines, quote markers and code blocks so the ca
   eq(M.plainText('一般不用。文档原话是：\n\n> Direct edits are picked up by the file watcher.\n\n也就是说，`install.sh` 改完就生效。'),
     '一般不用。文档原话是：\nDirect edits are picked up by the file watcher.\n也就是说，install.sh 改完就生效。');
   eq(M.plainText('可以，直接运行就行：\n\n```bash\ncd /x && ./install.sh\n```\n\n它会做这些事：\n\n' +
-    '- **复制脚本**：拷到 `~/.agent-popup/`。\n* [x] done item\n\n| 常量 | 默认值 |\n|---|:---:|\n| `GRACE_MS` | `1000` |\n\n---\n\n1. 第一步 *重要*'),
-    '可以，直接运行就行：\n它会做这些事：\n• 复制脚本：拷到 ~/.agent-popup/。\n• done item\n常量 · 默认值\nGRACE_MS · 1000\n1. 第一步 重要');
+    '- **复制脚本**：拷到 `~/.coding-agent-popup/`。\n* [x] done item\n\n| 常量 | 默认值 |\n|---|:---:|\n| `GRACE_MS` | `1000` |\n\n---\n\n1. 第一步 *重要*'),
+    '可以，直接运行就行：\n它会做这些事：\n• 复制脚本：拷到 ~/.coding-agent-popup/。\n• done item\n常量 · 默认值\nGRACE_MS · 1000\n1. 第一步 重要');
   eq(M.plainText('keep set_setting, GRACE_MS and 2 * 3 * 4 as they are'), 'keep set_setting, GRACE_MS and 2 * 3 * 4 as they are');
 });
 
@@ -823,7 +823,7 @@ test('the event loop uses a numeric mask, not $.NSEventMaskAny (bridged as a str
 // ---------------------------------------------------------------------------
 console.log('Install files');
 
-const HOME = path.join(os.tmpdir(), 'agent-popup-home-' + process.pid);
+const HOME = path.join(os.tmpdir(), 'coding-agent-popup-home-' + process.pid);
 const HOME_SHIM = `
 var __fs = require('fs'), __home = ${JSON.stringify(HOME)}, __tmp = ${JSON.stringify(HOME + '/tmp/')};
 function homeDir(){ __fs.mkdirSync(__home, {recursive:true}); return __home; }
@@ -842,7 +842,7 @@ function fm(){ return {
 }; }
 function $(x){ return x; }
 var ObjC = { unwrap: function(x){ return x; } };
-function selfPath(){ return ${JSON.stringify(path.join(__dirname, '..', 'agent-popup.js'))}; }
+function selfPath(){ return ${JSON.stringify(path.join(__dirname, '..', 'coding-agent-popup.js'))}; }
 `;
 
 function installerModule() {
@@ -858,11 +858,11 @@ test('install copies the script and writes hooks, keeping existing settings', ()
   fs.mkdirSync(HOME + '/.claude', { recursive: true });
   fs.writeFileSync(HOME + '/.claude/settings.json', JSON.stringify({ model: 'opus', hooks: { Stop: [{ hooks: [{ type: 'command', command: 'say done' }] }] } }));
   const out = I.install(['claude']);
-  ok(fs.existsSync(HOME + '/.agent-popup/agent-popup.js'), 'script copied to ~/.agent-popup');
+  ok(fs.existsSync(HOME + '/.coding-agent-popup/coding-agent-popup.js'), 'script copied to ~/.coding-agent-popup');
   const cfg = readJSON(HOME + '/.claude/settings.json');
   eq(cfg.model, 'opus');
   eq(cfg.hooks.Stop.length, 2, 'existing Stop hook kept, ours added');
-  ok(cfg.hooks.PermissionRequest[0].hooks[0].command.includes('"$HOME/.agent-popup/agent-popup.js" claude'));
+  ok(cfg.hooks.PermissionRequest[0].hooks[0].command.includes('"$HOME/.coding-agent-popup/coding-agent-popup.js" claude'));
   ok(fs.readdirSync(HOME + '/.claude').some(f => f.startsWith('settings.json.bak-')), 'backup written');
   ok(!out.includes('trusted once'), 'no Codex instructions when only Claude is installed');
 });
@@ -893,12 +893,41 @@ test('uninstall removes our hooks and the install dir, leaving your settings', (
   I.uninstall();
   eq(readJSON(HOME + '/.claude/settings.json'), { model: 'opus' });
   eq(readJSON(HOME + '/.codex/hooks.json'), {});
-  ok(!fs.existsSync(HOME + '/.agent-popup'), 'install dir removed');
+  ok(!fs.existsSync(HOME + '/.coding-agent-popup'), 'install dir removed');
+});
+
+test('upgrading from agent-popup swaps the hooks, keeps the popup position and drops ~/.agent-popup', () => {
+  const I = installerModule();
+  const oldCmd = 'osascript -l JavaScript "$HOME/.agent-popup/agent-popup.js" claude';
+  fs.mkdirSync(HOME + '/.claude', { recursive: true });
+  fs.writeFileSync(HOME + '/.claude/settings.json', JSON.stringify({ hooks: {
+    PermissionRequest: [{ matcher: '', hooks: [{ type: 'command', command: oldCmd, timeout: 300 }] }],
+    Stop: [{ hooks: [{ type: 'command', command: 'say done' }, { type: 'command', command: oldCmd }] }] } }));
+  fs.mkdirSync(HOME + '/.agent-popup', { recursive: true });
+  fs.writeFileSync(HOME + '/.agent-popup/agent-popup.js', '// old');
+  fs.writeFileSync(HOME + '/.agent-popup/window.json', '{"popupBL":{"x":900,"y":40}}');
+  const out = I.install(['claude']);
+  const cfg = readJSON(HOME + '/.claude/settings.json');
+  const cmds = Object.values(cfg.hooks).flat().flatMap(g => g.hooks.map(h => h.command));
+  ok(!cmds.some(c => c.includes('.agent-popup/agent-popup.js')), 'no old hook left to fire twice');
+  eq(cfg.hooks.PermissionRequest.length, 1);
+  eq(cfg.hooks.Stop[0].hooks.map(h => h.command), ['say done'], 'your own hook in the same group stays');
+  ok(!fs.existsSync(HOME + '/.agent-popup'), 'old install dir removed');
+  eq(fs.readFileSync(HOME + '/.coding-agent-popup/window.json', 'utf8'), '{"popupBL":{"x":900,"y":40}}', 'position kept');
+  ok(out.includes('replaced the old install'), 'says what it did');
+});
+
+test('uninstall also cleans up an old agent-popup install', () => {
+  const I = installerModule();
+  fs.mkdirSync(HOME + '/.agent-popup', { recursive: true });
+  fs.writeFileSync(HOME + '/.agent-popup/agent-popup.js', '// old');
+  I.uninstall();
+  ok(!fs.existsSync(HOME + '/.agent-popup'));
 });
 
 test('install.sh is executable and runs osascript with the install subcommand', () => {
   const sh = fs.readFileSync(path.join(__dirname, '..', 'install.sh'), 'utf8');
-  ok(/osascript -l JavaScript "\$DIR\/agent-popup\.js" install "\$@"/.test(sh));
+  ok(/osascript -l JavaScript "\$DIR\/coding-agent-popup\.js" install "\$@"/.test(sh));
   ok(/uname -s/.test(sh), 'refuses to run off macOS');
   ok((fs.statSync(path.join(__dirname, '..', 'install.sh')).mode & 0o111) !== 0, 'chmod +x set');
 });
