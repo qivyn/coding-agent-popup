@@ -1,0 +1,45 @@
+{
+  "name": "agent-popup",
+  "version": "0.1.0",
+  "description": "Hard-to-miss, Claude-styled popups for AI coding agents (Claude Code, Codex) on macOS: permission requests, multiple-choice questions, and merged task-complete notifications.",
+  "keywords": [
+    "claude-code",
+    "codex",
+    "openai-codex",
+    "ai-agents",
+    "hooks",
+    "notifications",
+    "macos",
+    "osascript",
+    "jxa",
+    "wkwebview",
+    "claude",
+    "notification",
+    "permission-prompt",
+    "macos-notification"
+  ],
+  "homepage": "https://github.com/qivyn/agent-popup#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/qivyn/agent-popup.git"
+  },
+  "bugs": {
+    "url": "https://github.com/qivyn/agent-popup/issues"
+  },
+  "license": "MIT",
+  "private": true,
+  "scripts": {
+    "test": "node test/run.js",
+    "demo": "osascript -l JavaScript agent-popup.js demo",
+    "preview": "node tools/build-preview.js"
+  },
+  "devDependencies": {
+    "jsdom": "^24.0.0"
+  },
+  "os": [
+    "darwin"
+  ],
+  "engines": {
+    "node": ">=18"
+  }
+}

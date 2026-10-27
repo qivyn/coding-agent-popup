@@ -1,0 +1,26 @@
+{
+  "hooks": {
+    "PermissionRequest": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "osascript -l JavaScript \"$HOME/.agent-popup/agent-popup.js\" claude",
+            "timeout": 300
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "f=$(mktemp); cat > \"$f\"; (osascript -l JavaScript \"$HOME/.agent-popup/agent-popup.js\" claude < \"$f\"; rm -f \"$f\") >/dev/null 2>&1 &"
+          }
+        ]
+      }
+    ]
+  }
+}

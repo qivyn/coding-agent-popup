@@ -1,0 +1,27 @@
+{
+  "description": "agent-popup: permission and task-complete popups",
+  "hooks": {
+    "PermissionRequest": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "osascript -l JavaScript \"$HOME/.agent-popup/agent-popup.js\" codex",
+            "timeout": 300
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "f=$(mktemp); cat > \"$f\"; (osascript -l JavaScript \"$HOME/.agent-popup/agent-popup.js\" codex < \"$f\"; rm -f \"$f\") >/dev/null 2>&1 & echo '{}'",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

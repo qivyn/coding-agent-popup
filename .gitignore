@@ -1,0 +1,9 @@
+.DS_Store
+node_modules/
+test/.tmp/
+*.log
+
+# Editor and local agent settings
+.idea/
+.vscode/
+.claude/settings.local.json

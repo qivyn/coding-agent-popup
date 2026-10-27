@@ -1,0 +1,8 @@
+# Fallback for the Codex desktop app if it doesn't run hooks: task-complete notifications only.
+#
+# Paste this at the TOP of ~/.codex/config.toml, above any [section] header,
+# and remove the "Stop" hook from ~/.codex/hooks.json so a task doesn't notify twice.
+# Permission requests cannot be shown this way — only "task complete".
+#
+# Add the "codex" name so the popup is labelled Codex:
+notify = ["sh", "-c", "(osascript -l JavaScript \"$HOME/.agent-popup/agent-popup.js\" codex \"$1\" >/dev/null 2>&1 &)", "sh"]
