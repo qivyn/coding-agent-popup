@@ -87,6 +87,36 @@ Upgrading from **agent-popup** (this project's old name)? Just run `./install.sh
 hooks for the new ones and removes `~/.agent-popup`, keeping where you left the popup. The hook
 commands change, so Codex asks you to trust them again.
 
+### Check for updates
+
+After installation, task completion triggers a detached check for this repository's latest stable
+GitHub Release, at most once every 24 hours across all sessions. A newer version gets one popup
+per version; **View release** opens its GitHub page. Offline and rate-limit failures stay silent
+and never delay task-complete, permission, or question popups. Nothing wakes on a timer while
+the project is idle.
+
+To check manually, bypassing the daily interval and printing the result and release link:
+
+```bash
+osascript -l JavaScript ~/.coding-agent-popup/coding-agent-popup.js check-updates
+```
+
+Checks only notify; they never download or replace scripts. To update, pull and reinstall from
+your original project directory:
+
+```bash
+git pull --ff-only
+./install.sh
+```
+
+Set `AGENT_POPUP_CHECK_UPDATES=0` in the agent's environment to disable automatic checks;
+manual checks remain available. State lives in `~/.coding-agent-popup/updates.json` and is
+removed on uninstall.
+
+For maintainers: keep `package.json`'s `version` and the script's `VERSION` in sync, then publish
+a matching stable GitHub Release (for example, `v0.2.0`). Commits or tags alone, drafts, and
+prereleases do not trigger update notices.
+
 ### See it first
 
 ```bash

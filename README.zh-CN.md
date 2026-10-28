@@ -79,6 +79,27 @@ cd coding-agent-popup
 
 从 **agent-popup**（本项目的旧名字）升级：直接运行 `./install.sh` 即可。它会把旧 hook 换成新的、删掉 `~/.agent-popup`，并保留你拖好的弹窗位置。hook 命令变了，所以 Codex 会要求重新信任一次。
 
+### 检查新版本
+
+安装后，任务完成时会在后台检查本仓库的 GitHub 正式版 Release，所有会话共享检查记录，每 24 小时最多检查一次。发现比当前版本更新的正式版时会弹出提示，每个版本只提醒一次；点击「查看新版本」打开发布页。检查失败会静默跳过，断网或 GitHub 限流不会影响任务完成、审批和提问弹窗。没有使用项目时不会定时唤醒。
+
+也可以随时手动检查（忽略每日间隔，在终端打印结果和发布页链接）：
+
+```bash
+osascript -l JavaScript ~/.coding-agent-popup/coding-agent-popup.js check-updates
+```
+
+检查功能只提示，不会自动下载或覆盖脚本。更新时，在原来的项目目录拉取代码并重新安装：
+
+```bash
+git pull --ff-only
+./install.sh
+```
+
+如需关闭自动检查，在 agent 的环境变量里设置 `AGENT_POPUP_CHECK_UPDATES=0`；手动检查仍然可用。检查记录保存在 `~/.coding-agent-popup/updates.json`，卸载时一并删除。
+
+维护者发布新版本时，需要同步修改 `package.json` 的 `version` 和脚本的 `VERSION`，并创建同版本号的 GitHub 正式版 Release（例如 `v0.2.0`）。只有 commit 或 tag、草稿和预发布版不会触发更新提醒。
+
 ### 先看看效果
 
 ```bash

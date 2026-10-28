@@ -7,6 +7,7 @@
 // Usage (run with macOS's built-in JavaScript for Automation, no dependencies):
 //   osascript -l JavaScript coding-agent-popup.js install [claude] [codex]   install + wire up hooks
 //   osascript -l JavaScript coding-agent-popup.js uninstall                  remove hooks + files
+//   osascript -l JavaScript coding-agent-popup.js check-updates              check the latest release
 //   osascript -l JavaScript coding-agent-popup.js demo [ask|perm|done|codex] preview the popups
 //   osascript -l JavaScript coding-agent-popup.js <agent>                    hook mode (JSON on stdin)
 //
@@ -19,7 +20,7 @@
 
 if (typeof ObjC !== 'undefined') { ObjC.import('Foundation'); }
 
-var VERSION = '0.1.0';
+var VERSION = '0.2.0';
 
 // ----------------------------------------------------------------------------
 // Settings — edit these if you like
@@ -31,6 +32,8 @@ var STAGGER_PX = 28;          // offset between stacked popups
 var STALE_MS = 6000;          // a popup whose heartbeat is older than this is considered dead
 var GRACE_MS = 1000;          // Codex and others: wait this long before a permission popup, in case it's settled anyway
 var PROMPT_WAIT_SEC = 30;     // Claude Code: show anyway if its "needs your permission" notification never comes
+var UPDATE_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000; // background release checks: at most once a day
+// Set AGENT_POPUP_CHECK_UPDATES=0 in the agent's environment to disable automatic checks.
 // Language: follows macOS (Chinese if your first preferred language is Chinese, else English).
 // Override with the AGENT_POPUP_LANG environment variable: "en" or "zh".
 
@@ -51,6 +54,12 @@ var STRINGS = {
     collapse: 'Collapse', expand: 'Click to open', pillPerm: '{n} waiting for approval', pillAsk: 'Question for you',
     clickFirst: 'click, then', close: 'Close', nUpdates: '{n} updates',
     remindTitle: '{agent} is still waiting for your approval', remindSub: 'Answer it in {agent}.',
+    updateTitle: 'A new version is available', updateVersions: 'Installed {current} → latest {latest}',
+    updateBody: 'View the release notes and installation instructions on GitHub.',
+    viewRelease: 'View release', later: 'Dismiss',
+    updateAvailable: 'coding-agent-popup {latest} is available (installed: {current}).',
+    upToDate: 'coding-agent-popup {current} is up to date.', noRelease: 'No stable release has been published yet.',
+    updateFailed: 'Could not check for updates. Try again later.', updateBusy: 'An update check is already running.',
     verbs: { Bash: 'run a command', Edit: 'edit a file', MultiEdit: 'edit a file', Write: 'write a file',
       Read: 'read a file', NotebookEdit: 'edit a notebook', WebFetch: 'fetch a web page',
       WebSearch: 'search the web', Glob: 'find files', Grep: 'search file contents',
@@ -69,6 +78,11 @@ var STRINGS = {
     collapse: '收起', expand: '点击展开', pillPerm: '{n} 个审批待处理', pillAsk: '有问题等你回答',
     clickFirst: '点一下弹窗后', close: '关闭', nUpdates: '{n} 条更新',
     remindTitle: '{agent} 还在等你审批', remindSub: '请到 {agent} 里处理。',
+    updateTitle: '发现新版本', updateVersions: '当前 {current} → 最新 {latest}',
+    updateBody: '前往 GitHub 查看更新说明和安装方法。', viewRelease: '查看新版本', later: '关闭',
+    updateAvailable: 'coding-agent-popup 有新版本 {latest}（当前：{current}）。',
+    upToDate: 'coding-agent-popup {current} 已是最新版本。', noRelease: '暂时还没有发布正式版本。',
+    updateFailed: '检查更新失败，请稍后重试。', updateBusy: '正在检查更新，请稍后重试。',
     verbs: { Bash: '运行命令', Edit: '修改文件', MultiEdit: '修改文件', Write: '写入文件',
       Read: '读取文件', NotebookEdit: '修改笔记本', WebFetch: '访问网页',
       WebSearch: '搜索网页', Glob: '查找文件', Grep: '搜索文件内容',
@@ -425,6 +439,23 @@ var PAGE_JS = `
       + '<button class="fold" data-fold title="' + esc(T.collapse) + '">' + FOLD_ICON + '</button></div>';
   }
   var FOLD_ICON = '<svg width="12" height="12" viewBox="0 0 12 12"><path d="M2.5 6h7" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>';
+
+  if (D.mode === 'update') {
+    var updateAgent = { name: 'coding-agent-popup', icon: 'term' };
+    setPill(T.updateTitle, [updateAgent]);
+    app.innerHTML = top('', '', [updateAgent]) + '<h1>' + esc(T.updateTitle) + '</h1>'
+      + '<div class="card"><p>' + esc(fmt(T.updateVersions, { current: D.current, latest: D.latest }))
+      + '</p><p>' + esc(T.updateBody) + '</p></div>'
+      + '<div class="footer"><button class="btn" data-a="ok">' + esc(T.later) + '</button>'
+      + '<button class="btn primary" data-a="open">' + esc(T.viewRelease) + '</button></div>';
+    app.querySelector('[data-a=ok]').onclick = function(){ finish({ action: 'ok' }); };
+    app.querySelector('[data-a=open]').onclick = function(){ finish({ action: 'open' }); };
+    document.addEventListener('keydown', function(e){
+      if (done || COLLAPSED) return;
+      if (e.key === 'Escape' || e.key === 'Enter') { e.preventDefault(); finish({ action: 'ok' }); }
+    });
+    size();
+  }
 
   // ------------------------------ question with options ------------------------------
   if (D.mode === 'ask') applyTheme([D.agent || DEFAULT_AGENT]);
@@ -1955,6 +1986,7 @@ function handleHook(data, agent) {
   var project = String(data.cwd || '').split('/').filter(Boolean).pop() || '';
 
   if (data.hook_event_name === 'Stop') {
+    try { maybeCheckUpdates(); } catch (e) {} // detached: never delay a task-complete popup with network I/O
     try { return handleDone(data, project, agent); } catch (e) { return ''; }
   }
   if (data.hook_event_name === 'Notification') {
@@ -2133,6 +2165,123 @@ function selfPath() {
   return '';
 }
 
+// =============================================================================
+// Release checks — no downloads or code execution; the user opens the release page to update.
+// =============================================================================
+
+var RELEASES_URL = 'https://github.com/qivyn/coding-agent-popup/releases';
+var LATEST_RELEASE_API = 'https://api.github.com/repos/qivyn/coding-agent-popup/releases/latest';
+
+function parseVersion(value) {
+  var m = /^v?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/.exec(String(value || ''));
+  if (!m) return null;
+  var pre = m[4] ? m[4].split('.') : [];
+  if (pre.some(function (p) { return /^\d+$/.test(p) && p.length > 1 && p[0] === '0'; })) return null;
+  return { parts: m.slice(1, 4), pre: pre };
+}
+
+function compareVersions(a, b) {
+  a = parseVersion(a); b = parseVersion(b);
+  if (!a || !b) return null;
+  function numeric(x, y) { return x.length !== y.length ? (x.length > y.length ? 1 : -1) : x === y ? 0 : x > y ? 1 : -1; }
+  for (var i = 0; i < 3; i++) { var n = numeric(a.parts[i], b.parts[i]); if (n) return n; }
+  if (!a.pre.length || !b.pre.length) return a.pre.length === b.pre.length ? 0 : a.pre.length ? -1 : 1;
+  for (var j = 0; j < Math.max(a.pre.length, b.pre.length); j++) {
+    var x = a.pre[j], y = b.pre[j];
+    if (x === undefined || y === undefined) return x === y ? 0 : x === undefined ? -1 : 1;
+    if (x === y) continue;
+    var nx = /^\d+$/.test(x), ny = /^\d+$/.test(y);
+    return nx && ny ? numeric(x, y) : nx !== ny ? (nx ? -1 : 1) : x > y ? 1 : -1;
+  }
+  return 0;
+}
+
+function updateStatePath() { return homeDir() + '/' + INSTALL_DIR_REL + '/updates.json'; }
+function readUpdateState() {
+  try { var s = JSON.parse(readText(updateStatePath()) || '{}'); return s && typeof s === 'object' && !Array.isArray(s) ? s : {}; }
+  catch (e) { return {}; }
+}
+function updateCheckDue(state) {
+  var last = state.checkedAt;
+  return typeof last !== 'number' || !isFinite(last) || last <= 0 || Date.now() < last || Date.now() - last >= UPDATE_CHECK_INTERVAL_MS;
+}
+
+function maybeCheckUpdates() {
+  if (envVar('AGENT_POPUP_CHECK_UPDATES') === '0' || !updateCheckDue(readUpdateState())) return;
+  var script = homeDir() + '/' + INSTALL_DIR_REL + '/' + SCRIPT_NAME;
+  if (!fileExists(script)) return;
+  var app = Application.currentApplication();
+  app.includeStandardAdditions = true;
+  app.doShellScript('/usr/bin/nohup /usr/bin/osascript -l JavaScript ' + shellQuote(script)
+    + ' check-updates --background >/dev/null 2>&1 &');
+}
+
+function fetchLatestRelease() {
+  var app = Application.currentApplication();
+  app.includeStandardAdditions = true;
+  var response = app.doShellScript('/usr/bin/curl -q --silent --show-error --connect-timeout 3 --max-time 12'
+    + ' --max-filesize 1048576 --header ' + shellQuote('Accept: application/vnd.github+json')
+    + ' --header ' + shellQuote('User-Agent: coding-agent-popup/' + VERSION)
+    + ' --write-out ' + shellQuote('\n%{http_code}') + ' ' + shellQuote(LATEST_RELEASE_API));
+  var status = /\s(\d{3})$/.exec(response);
+  if (!status) throw new Error('Missing HTTP status');
+  if (status[1] === '404') return null; // the repository has no published stable release yet
+  if (status[1] !== '200') throw new Error('HTTP ' + status[1]);
+  var release = JSON.parse(response.slice(0, status.index));
+  var version = release && parseVersion(release.tag_name);
+  if (!version || version.pre.length || release.draft || release.prerelease) throw new Error('Invalid stable release');
+  return { version: release.tag_name.replace(/^v/, ''), url: RELEASES_URL + '/tag/' + encodeURIComponent(release.tag_name) };
+}
+
+function showUpdateNotice(release) {
+  var r = showWebWindow({ mode: 'update', t: S(), current: VERSION, latest: release.version }, { timeoutSec: 60 });
+  if (!r) return false; // retry on the next daily check if WebKit failed to load
+  if (r.action === 'open') {
+    var app = Application.currentApplication();
+    app.includeStandardAdditions = true;
+    app.doShellScript('/usr/bin/open ' + shellQuote(release.url));
+  }
+  return true;
+}
+
+function checkUpdates(background) {
+  if (background && envVar('AGENT_POPUP_CHECK_UPDATES') === '0') return '';
+  var lock = baseDir() + 'update-check.lock', acquired = false, release = null, notify = false;
+  try {
+    // Network calls can last 12 s, longer than the popup locks' 6 s stale threshold.
+    if (fileExists(lock) && Date.now() - mtimeMs(lock) > 60000) removePath(lock);
+    acquired = !!fm().createDirectoryAtPathWithIntermediateDirectoriesAttributesError($(lock), false, $(), null);
+    if (!acquired) return background ? '' : S().updateBusy;
+    var state = readUpdateState();
+    if (background && !updateCheckDue(state)) return '';
+    state.checkedAt = Date.now(); // failures are throttled too, including offline and rate-limit errors
+    ensureDir(homeDir() + '/' + INSTALL_DIR_REL);
+    if (!writeText(updateStatePath(), JSON.stringify(state))) throw new Error('Could not save update state');
+    release = fetchLatestRelease();
+    if (release && compareVersions(release.version, VERSION) > 0) {
+      notify = background && state.notifiedVersion !== release.version;
+      if (notify) {
+        state.notifiedVersion = release.version; // claim before releasing the lock: one notice across all sessions
+        if (!writeText(updateStatePath(), JSON.stringify(state))) throw new Error('Could not save update state');
+      }
+    }
+  } catch (e) { return background ? '' : S().updateFailed; }
+  finally { if (acquired) removePath(lock); }
+  if (notify) {
+    var shown = false;
+    try { shown = showUpdateNotice(release); } catch (e) {}
+    if (!shown) {
+      var retry = readUpdateState();
+      if (retry.notifiedVersion === release.version) { delete retry.notifiedVersion; writeText(updateStatePath(), JSON.stringify(retry)); }
+    }
+  }
+  if (background) return '';
+  if (!release) return S().noRelease;
+  return compareVersions(release.version, VERSION) > 0
+    ? fmt(S().updateAvailable, { current: VERSION, latest: release.version }) + '\n' + release.url
+    : fmt(S().upToDate, { current: VERSION });
+}
+
 function install(args) {
   var log = [], home = homeDir();
   var dest = home + '/' + INSTALL_DIR_REL + '/' + SCRIPT_NAME;
@@ -2264,6 +2413,7 @@ var HELP = [
   '',
   '  osascript -l JavaScript coding-agent-popup.js install [claude] [codex]',
   '  osascript -l JavaScript coding-agent-popup.js uninstall',
+  '  osascript -l JavaScript coding-agent-popup.js check-updates',
   '  osascript -l JavaScript coding-agent-popup.js demo [ask|perm|done|codex]',
   '  osascript -l JavaScript coding-agent-popup.js <agent>        hook mode, event JSON on stdin',
   '',
@@ -2277,6 +2427,7 @@ function run(argv) {
   if (cmd === 'version' || cmd === '--version') return VERSION;
   if (cmd === 'install') return install(argv.slice(1));
   if (cmd === 'uninstall') return uninstall();
+  if (cmd === 'check-updates') return checkUpdates(argv[1] === '--background');
   if (cmd === 'demo') return demo(argv[1]);
   if (cmd === 'perm-window') return runPermWindow();
   if (cmd === 'remind') return runReminder(argv[1]);

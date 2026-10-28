@@ -109,6 +109,19 @@ if (!JSDOM) {
     eq(p.doc.querySelector('[data-a=deny]').textContent, '拒绝');
   });
 
+  test('update: localized notice opens the release only on an explicit click', () => {
+    const p = page({ mode: 'update', current: '0.1.0', latest: '0.2.0', t: load().STRINGS.zh });
+    eq(p.doc.querySelector('h1').textContent, '发现新版本');
+    ok(p.doc.querySelector('.card').textContent.includes('当前 0.1.0 → 最新 0.2.0'));
+    eq(p.state().result, undefined);
+    p.doc.querySelector('[data-a=open]').click();
+    eq(p.state().result, { action: 'open' });
+    const dismissed = page({ mode: 'update', current: '0.1.0', latest: '<img src=x onerror=alert(1)>' });
+    eq(dismissed.doc.querySelector('img'), null, 'release text cannot inject HTML');
+    dismissed.key('Enter');
+    eq(dismissed.state().result, { action: 'ok' }, 'Enter dismisses instead of opening a browser');
+  });
+
   test('done: one card per agent + project, newest first, each with its own Open', () => {
     const now = Date.now(), claude = { name: 'Claude', icon: 'spark' }, codex = { name: 'Codex', icon: 'term' };
     const p = page({ mode: 'done', items: [
@@ -930,6 +943,180 @@ test('install.sh is executable and runs osascript with the install subcommand', 
   ok(/osascript -l JavaScript "\$DIR\/coding-agent-popup\.js" install "\$@"/.test(sh));
   ok(/uname -s/.test(sh), 'refuses to run off macOS');
   ok((fs.statSync(path.join(__dirname, '..', 'install.sh')).mode & 0o111) !== 0, 'chmod +x set');
+});
+
+fs.rmSync(HOME, { recursive: true, force: true });
+
+// ---------------------------------------------------------------------------
+// Update checks: real file state, fake transport and windows; no network or UI.
+// ---------------------------------------------------------------------------
+console.log('Updates');
+test('release version matches package metadata', () => {
+  eq(load('', 'VERSION'), JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8')).version);
+});
+
+function updatesModule(extra = '') {
+  fs.rmSync(HOME, { recursive: true, force: true });
+  fs.mkdirSync(HOME + '/.coding-agent-popup', { recursive: true });
+  fs.writeFileSync(HOME + '/.coding-agent-popup/coding-agent-popup.js', '// installed');
+  return load(HOME_SHIM + `
+    var VERSION = '0.1.0'; // fixed installed-version fixture, independent of the release being tested
+    var __response = {tag_name:'v0.2.0', draft:false, prerelease:false}, __status = '200';
+    var __fail = false, __disabled = false, __noticeResult = true, __requests = 0, __notices = [], __commands = [];
+    var Application = {currentApplication: function(){ return {doShellScript: function(command){
+      __commands.push(command);
+      if (command.indexOf('/usr/bin/curl ') !== 0) return '';
+      __requests++;
+      if (__fail) throw new Error('offline');
+      return JSON.stringify(__response) + '\\r' + __status;
+    }}; }};
+    function envVar(name){ return name === 'AGENT_POPUP_CHECK_UPDATES' && __disabled ? '0' : ''; }
+    function S(){ return STRINGS.en; }
+    function showUpdateNotice(release){ __notices.push(release); return __noticeResult; }
+  ` + extra, `{
+    checkUpdates, maybeCheckUpdates, compareVersions, updateCheckDue, run,
+    counts: () => ({requests:__requests, notices:__notices.length}),
+    notices:__notices, commands:__commands,
+    response: (v, status='200') => {__response=v; __status=status;},
+    fail: () => {__fail=true;}, disable: () => {__disabled=true;},
+    failNotice: () => {__noticeResult=false;}
+  }`);
+}
+const updateFile = HOME + '/.coding-agent-popup/updates.json';
+function expireUpdateCheck() {
+  const state = readJSON(updateFile);
+  state.checkedAt = Date.now() - 25 * 60 * 60 * 1000;
+  fs.writeFileSync(updateFile, JSON.stringify(state));
+}
+
+test('versions: semantic ordering, prereleases, build metadata and invalid tags', () => {
+  const U = updatesModule();
+  for (const [a, b, expected] of [
+    ['v0.10.0', '0.9.0', 1], ['1.0.0', '1.0.0-rc.1', 1],
+    ['1.0.0-rc.10', '1.0.0-rc.2', 1], ['1.0.0-alpha', '1.0.0-alpha.1', -1],
+    ['1.0.0-1', '1.0.0-alpha', -1], ['1.0.0+build.1', 'v1.0.0+build.2', 0],
+    ['1.0', '1.0.0', null], ['01.0.0', '1.0.0', null], ['1.0.0-01', '1.0.0', null],
+    ['latest', '1.0.0', null], ['1.0.0', '2.0.0', -1]
+  ]) eq(U.compareVersions(a, b), expected, a + ' vs ' + b);
+});
+
+test('automatic checks: once per day across worker invocations; one notice per version', () => {
+  const U = updatesModule();
+  eq(U.checkUpdates(true), '');
+  eq(U.counts(), { requests: 1, notices: 1 });
+  eq(U.notices[0], { version: '0.2.0', url: 'https://github.com/qivyn/coding-agent-popup/releases/tag/v0.2.0' });
+  U.checkUpdates(true);
+  eq(U.counts(), { requests: 1, notices: 1 });
+  expireUpdateCheck();
+  U.checkUpdates(true);
+  eq(U.counts(), { requests: 2, notices: 1 });
+  U.response({ tag_name: 'v0.3.0' });
+  expireUpdateCheck();
+  U.checkUpdates(true);
+  eq(U.counts(), { requests: 3, notices: 2 });
+});
+
+test('manual checks bypass the daily cache, print a release link and do not mark it notified', () => {
+  const U = updatesModule();
+  ok(U.run(['check-updates']).includes('https://github.com/qivyn/coding-agent-popup/releases/tag/v0.2.0'));
+  U.checkUpdates(false);
+  eq(U.counts(), { requests: 2, notices: 0 });
+  eq(readJSON(updateFile).notifiedVersion, undefined);
+});
+
+test('checks distinguish no release, current version and an older latest release', () => {
+  const U = updatesModule();
+  U.response({}, '404');
+  eq(U.checkUpdates(false), 'No stable release has been published yet.');
+  for (const tag_name of ['v0.1.0', 'v0.0.9']) {
+    U.response({ tag_name });
+    eq(U.checkUpdates(false), 'coding-agent-popup 0.1.0 is up to date.');
+  }
+  eq(U.counts().notices, 0);
+});
+
+test('offline failures are silent in background, throttled, and visible to manual checks', () => {
+  const U = updatesModule();
+  U.fail();
+  eq(U.checkUpdates(true), '');
+  U.checkUpdates(true);
+  eq(U.counts(), { requests: 1, notices: 0 });
+  eq(U.checkUpdates(false), 'Could not check for updates. Try again later.');
+  ok(!fs.existsSync(HOME + '/tmp/update-check.lock'), 'lock released after a failed request');
+});
+
+test('rate limits, malformed responses, drafts and prereleases never notify', () => {
+  const U = updatesModule();
+  for (const [response, status] of [
+    [{ message: 'rate limited' }, '403'], [{ message: 'slow down' }, '429'], [null, '200'],
+    [{ tag_name: 'latest' }, '200'], [{ tag_name: 'v1.0.0', draft: true }, '200'],
+    [{ tag_name: 'v1.0.0', prerelease: true }, '200'], [{ tag_name: 'v1.0.0-beta.1' }, '200']
+  ]) {
+    U.response(response, status);
+    eq(U.checkUpdates(false), 'Could not check for updates. Try again later.');
+  }
+  eq(U.counts().notices, 0);
+});
+
+test('automatic checks can be disabled while manual checks remain available', () => {
+  const U = updatesModule();
+  U.disable();
+  U.maybeCheckUpdates();
+  U.checkUpdates(true);
+  eq(U.commands, []);
+  ok(U.checkUpdates(false).includes('0.2.0'));
+});
+
+test('hooks only launch a detached worker; cached checks and uninstalled scripts do not spawn', () => {
+  const U = updatesModule();
+  U.maybeCheckUpdates();
+  eq(U.counts(), { requests: 0, notices: 0 }, 'no network or window in the hook process');
+  ok(U.commands[0].startsWith('/usr/bin/nohup /usr/bin/osascript'));
+  ok(U.commands[0].endsWith('check-updates --background >/dev/null 2>&1 &'));
+  U.checkUpdates(false);
+  U.maybeCheckUpdates();
+  eq(U.commands.length, 2, 'one spawn and one manual request');
+  expireUpdateCheck();
+  fs.rmSync(HOME + '/.coding-agent-popup/coding-agent-popup.js');
+  U.maybeCheckUpdates();
+  eq(U.commands.length, 2, 'uninstalled script does not spawn');
+});
+
+test('concurrent workers respect an active lock; a crashed worker lock can be recovered', () => {
+  const U = updatesModule();
+  const lock = HOME + '/tmp/update-check.lock';
+  fs.mkdirSync(lock, { recursive: true });
+  eq(U.checkUpdates(true), '');
+  eq(U.checkUpdates(false), 'An update check is already running.');
+  eq(U.counts().requests, 0);
+  const past = new Date(Date.now() - 65000);
+  fs.utimesSync(lock, past, past);
+  U.checkUpdates(true);
+  eq(U.counts(), { requests: 1, notices: 1 });
+  ok(!fs.existsSync(lock));
+});
+
+test('corrupt state and clock changes recover; failed windows are retried the next day', () => {
+  const U = updatesModule();
+  fs.writeFileSync(updateFile, '{broken');
+  U.failNotice();
+  U.checkUpdates(true);
+  eq(readJSON(updateFile).notifiedVersion, undefined);
+  expireUpdateCheck();
+  U.checkUpdates(true);
+  eq(U.counts(), { requests: 2, notices: 2 });
+  ok(U.updateCheckDue({ checkedAt: Date.now() + 100000 }));
+  ok(U.updateCheckDue({ checkedAt: 'invalid' }));
+});
+
+test('the Stop hook still completes if starting an update worker fails', () => {
+  const U = updatesModule(`
+    function maybeCheckUpdates(){ throw new Error('launch failed'); }
+    function handleDone(){ return 'done'; }
+    function readStdin(){ return '{"hook_event_name":"Stop"}'; }
+    function agentInfo(){ return {name:'Codex'}; }
+  `);
+  eq(U.run(['codex']), 'done');
 });
 
 fs.rmSync(HOME, { recursive: true, force: true });

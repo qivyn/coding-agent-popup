@@ -1,6 +1,6 @@
 {
   "name": "coding-agent-popup",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Hard-to-miss, Claude-styled popups for AI coding agents (Claude Code, Codex) on macOS: permission requests, multiple-choice questions, and merged task-complete notifications.",
   "keywords": [
     "coding-agent",
