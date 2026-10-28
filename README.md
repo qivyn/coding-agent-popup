@@ -117,6 +117,9 @@ For maintainers: keep `package.json`'s `version` and the script's `VERSION` in s
 a matching stable GitHub Release (for example, `v0.2.0`). Commits or tags alone, drafts, and
 prereleases do not trigger update notices.
 
+The release workflow validates versions, runs tests, and publishes the stable Release and
+installation files when a `vX.Y.Z` tag is pushed. Prepare `docs/releases/vX.Y.Z.md` before tagging.
+
 ### See it first
 
 ```bash

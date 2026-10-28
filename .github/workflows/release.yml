@@ -1,0 +1,65 @@
+name: Publish release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+      - name: Validate release metadata
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          node <<'NODE'
+          const assert = require('node:assert/strict');
+          const fs = require('node:fs');
+          const tag = process.env.RELEASE_TAG;
+          assert.match(tag, /^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/);
+          const version = require('./package.json').version;
+          const scriptVersion = new Function(fs.readFileSync('coding-agent-popup.js', 'utf8') + '\nreturn VERSION;')();
+          assert.equal(tag, 'v' + version);
+          assert.equal(scriptVersion, version);
+          assert.ok(fs.readFileSync('docs/releases/' + tag + '.md', 'utf8').trim());
+          NODE
+      - run: npm install --ignore-scripts --no-audit --no-fund
+      - run: npm test
+
+  release:
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Publish stable GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          gh release create "$RELEASE_TAG" \
+            coding-agent-popup.js install.sh uninstall.sh LICENSE \
+            --verify-tag \
+            --title "coding-agent-popup $RELEASE_TAG" \
+            --notes-file "docs/releases/$RELEASE_TAG.md" \
+            --latest

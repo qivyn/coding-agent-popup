@@ -100,6 +100,8 @@ git pull --ff-only
 
 维护者发布新版本时，需要同步修改 `package.json` 的 `version` 和脚本的 `VERSION`，并创建同版本号的 GitHub 正式版 Release（例如 `v0.2.0`）。只有 commit 或 tag、草稿和预发布版不会触发更新提醒。
 
+仓库的发布工作流会在推送 `vX.Y.Z` 标签后校验版本号、运行测试，再自动发布正式版 Release 和安装文件。发布前需准备 `docs/releases/vX.Y.Z.md` 更新说明。
+
 ### 先看看效果
 
 ```bash
